@@ -1,5 +1,4 @@
-import { StoredU256, Calldata, BytesWriter } from '@btc-vision/btc-runtime/runtime'
-import { IOP_165 } from './IOP_165'
+import { BytesWriter, Calldata } from '@btc-vision/btc-runtime/runtime';
 
 export interface IOP_721 {
 

@@ -1,4 +1,4 @@
-import { StoredString, Calldata, BytesWriter } from '@btc-vision/btc-runtime/runtime'
+import { BytesWriter, Calldata } from '@btc-vision/btc-runtime/runtime';
 
 export interface IOP_721_Metadata {
 

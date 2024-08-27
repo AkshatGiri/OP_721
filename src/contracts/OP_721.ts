@@ -15,16 +15,45 @@ import {
     Selector,
     StoredU256,
     TransferHelper,
+    StoredString,
 } from '@btc-vision/btc-runtime/runtime';
 import { IOP_165 } from './interfaces/IOP_165';
 import { IOP_721 } from './interfaces/IOP_721';
 import { IOP_721_Metadata } from './interfaces/IP_721_Metadata';
+import { OP721InitParams } from './interfaces/OP721InitParams';
+
+const namePointer: u16 = Blockchain.nextPointer;
+const symbolPointer: u16 = Blockchain.nextPointer;
+const baseURIPointer: u16 = Blockchain.nextPointer;
 
 @final
 export class OP_721 extends OP_NET implements IOP_165, IOP_721, IOP_721_Metadata {
 
-    constructor() {
+    protected readonly _name: StoredString;
+    protected readonly _symbol: StoredString;
+
+    public constructor(params: OP721InitParams | null = null) {
         super();
+
+        this._name = new StoredString(namePointer, '');
+        this._symbol = new StoredString(symbolPointer, '');
+        this._baseURI = new StoredString(baseURIPointer, '');
+
+        if (params && !this._name.value) { // TODO: confirm that in assembly script empty string is falsy.
+            this.instantiate(params);
+        }
+    }
+
+    public _baseURI: StoredString;
+
+
+    public instantiate(params: OP721InitParams): void {
+        if (!this._name.value) {
+            throw new Revert("Already Initialized")
+        }
+
+        this._name.value = params.name;
+        this._symbol.value = params.symbol;
     }
 
     public supportsInterface(calldata: Calldata): BytesWriter {
