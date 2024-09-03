@@ -1,4 +1,5 @@
 import { BytesWriter, Calldata } from '@btc-vision/btc-runtime/runtime';
+import { calculateInterfaceId } from '../utils/calculateInterfaceId';
 
 export interface IOP_721_Metadata {
 
@@ -10,3 +11,9 @@ export interface IOP_721_Metadata {
   tokenURI(calldata: Calldata): BytesWriter;
 
 }
+
+export const INTERFACE_ID_OP_721_Metadata = calculateInterfaceId([
+  'name',
+  'symbol',
+  'tokenURI',
+])

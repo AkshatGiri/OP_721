@@ -1,7 +1,7 @@
 import { BytesWriter, Calldata } from '@btc-vision/btc-runtime/runtime';
+import { calculateInterfaceId } from '../utils/calculateInterfaceId';
 
 export interface IOP_721 {
-
   balanceOf(calldata: Calldata): BytesWriter;
 
   ownerOf(calldata: Calldata): BytesWriter;
@@ -17,5 +17,15 @@ export interface IOP_721 {
   getApproved(calldata: Calldata): BytesWriter;
 
   isApprovedForAll(calldata: Calldata): BytesWriter;
-
 }
+
+export const INTERFACE_ID_OP_721 = calculateInterfaceId([
+  'balanceOf',
+  'ownerOf',
+  'safeTransferFrom',
+  'transferFrom',
+  'approve',
+  'setApprovalForAll',
+  'getApproved',
+  'isApprovedForAll',
+]);

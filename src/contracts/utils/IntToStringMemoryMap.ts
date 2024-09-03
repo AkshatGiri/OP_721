@@ -4,11 +4,12 @@ import {
 } from '@btc-vision/btc-runtime/runtime';
 import { u256 } from 'as-bignum/assembly';
 
-export class IntToStringMap<K extends u256, V extends string> {
+export class IntToStringMemoryMap<K extends u256, V extends string> {
   public pointer: u16;
 
   constructor(
-    pointer: u16
+    pointer: u16,
+    private readonly defaultValue: V,
   ) {
     this.pointer = pointer;
   }
@@ -17,6 +18,8 @@ export class IntToStringMap<K extends u256, V extends string> {
     // override the current value if it already exists
     if (this.has(key)) {
       const storagePointer = Blockchain.getStorageAt(this.pointer, key, u256.Zero);
+
+      // TODO: what if we actually get a zero value? 
 
       const str = new StoredString(storagePointer.as<u16>());
 
@@ -38,7 +41,11 @@ export class IntToStringMap<K extends u256, V extends string> {
 
   public get(key: K): V {
     if (!this.has(key)) {
-      throw new Error('Key not found.');
+      // TODO: We can throw an error, return a default value or return null
+      // I see that they are mostly using default values in the runtime, 
+      // although I do believe that it makes it more confusing than anything
+      // so not sure how I want to handle this yet. 
+      return this.defaultValue;
     }
 
     const storagePointer = Blockchain.getStorageAt(this.pointer, key, u256.Zero);
@@ -47,7 +54,9 @@ export class IntToStringMap<K extends u256, V extends string> {
   }
 
   public has(key: K): bool {
-    return Blockchain.hasStorageAt(this.pointer, key);
+    const storagePointer = Blockchain.getStorageAt(this.pointer, key, u256.Zero);
+
+    return storagePointer != u256.Zero;
   }
 
   public delete(key: K): bool {
@@ -56,6 +65,8 @@ export class IntToStringMap<K extends u256, V extends string> {
     }
 
     const storagePointer = Blockchain.getStorageAt(this.pointer, key, u256.Zero);
+
+    // TODO: What is we actually get a zero value? It shouldn't be possible but need to confirm.
 
     const str = new StoredString(storagePointer.as<u16>());
 
