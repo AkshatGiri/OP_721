@@ -42,8 +42,6 @@ export class OP_721 extends OP_NET implements IOP_165, IOP_721, IOP_721_Metadata
         MemorySlotData<U256Boolean>
     >;
 
-    // TODO: token approvals and operator approvals.
-
     protected readonly _name: StoredString;
     protected readonly _symbol: StoredString;
     public _baseURI: StoredString;
