@@ -1,4 +1,4 @@
-import { u128, u256 } from 'as-bignum/assembly';
+import { u256 } from 'as-bignum/assembly';
 
 import {
     Address,
@@ -6,17 +6,12 @@ import {
     Blockchain,
     BytesWriter,
     Calldata,
-    encodeSelector,
     MemorySlotData,
-    OP_NET,
-    OP20Utils,
-    Revert,
-    SafeMath,
-    Selector,
-    StoredU256,
-    TransferHelper,
-    StoredString,
     MultiAddressMemoryMap,
+    OP_NET,
+    Revert,
+    Selector,
+    StoredString
 } from '@btc-vision/btc-runtime/runtime';
 import { INTERFACE_ID_OP_165, IOP_165 } from './interfaces/IOP_165';
 import { INTERFACE_ID_OP_721, IOP_721 } from './interfaces/IOP_721';
@@ -145,43 +140,6 @@ export class OP_721 extends OP_NET implements IOP_165, IOP_721, IOP_721_Metadata
         return owner;
     }
 
-    public safeTransferFrom(calldata: Calldata): BytesWriter {
-        const response = new BytesWriter();
-        return response;
-    }
-
-    protected _safeTransferFrom(from: Address, to: Address, tokenId: u256): boolean {
-        // TODO: Need to know if there's a way to check if an address is a contract address
-        // If it is, then we need to check if it implements the IOP_721Receiver interface
-        return false;
-    }
-
-    public transferFrom(calldata: Calldata): BytesWriter {
-        const response = new BytesWriter();
-        const resp = this._transferFrom(
-            calldata.readAddress(),
-            calldata.readAddress(),
-            calldata.readU256(),
-        );
-
-        response.writeBoolean(resp);
-        return response;
-    }
-
-    protected _transferFrom(from: Address, to: Address, tokenId: u256): boolean {
-        if (Blockchain.sender !== from) {
-            throw new Revert('Not caller.');
-        }
-
-        return true;
-    }
-
-    protected _update(owner: Address, tokenId: u256): Address {
-        const currentOwner = this._ownerOf(tokenId);
-
-        return '';
-    }
-
     public approve(calldata: Calldata): BytesWriter {
         const response = new BytesWriter();
         const to = calldata.readAddress();
@@ -257,19 +215,84 @@ export class OP_721 extends OP_NET implements IOP_165, IOP_721, IOP_721_Metadata
         );
     }
 
-    protected _mint(calldata: Calldata): BytesWriter {
+    protected _mint(to: Address, tokenId: u256): boolean {
+        if (this.ownersMap.has(tokenId)) {
+            throw new Revert('Token already exists');
+        }
+
+        this.ownersMap.set(tokenId, to);
+        this.balancesMap.set(to, u256.add(this.balancesMap.get(to), u256.One));
+
+        // TODO: Emit event
+        return true;
+    }
+
+    public _safeMint(to: Address, tokenId: u256): boolean {
+        return this._mint(to, tokenId);
+    }
+
+    public _burn(tokenId: u256): boolean {
+        const owner = this._requireOwned(tokenId);
+        if (owner != Blockchain.sender) {
+            throw new Revert('Not authorized to burn token');
+        }
+
+        this.ownersMap.delete(tokenId);
+        this.balancesMap.set(owner, u256.sub(this.balancesMap.get(owner), u256.One));
+
+        // TODO: Emit event
+        return true;
+    }
+
+    public transferFrom(calldata: Calldata): BytesWriter {
         const response = new BytesWriter();
+        const from = calldata.readAddress();
+        const to = calldata.readAddress();
+        const tokenId = calldata.readU256();
+        const resp = this._transferFrom(from, to, tokenId);
+
+        response.writeBoolean(resp);
         return response;
     }
 
-    public _safeMint(calldata: Calldata): BytesWriter {
+    protected _transferFrom(from: Address, to: Address, tokenId: u256): boolean {
+        if (Blockchain.sender !== from) {
+            throw new Revert('Not caller.');
+        }
+
+        if (!this._isAuthorized(from, Blockchain.sender, tokenId)) {
+            throw new Revert('Not authorized to transfer token');
+        }
+
+        if (Blockchain.sender == to) {
+            throw new Revert('Cannot transfer to self.');
+        }
+
+        this.ownersMap.set(tokenId, to);
+        this.balancesMap.set(from, u256.sub(this.balancesMap.get(from), u256.One));
+        this.balancesMap.set(to, u256.add(this.balancesMap.get(to), u256.One));
+        // clear approvals from the previous owner
+        this.tokenApprovalsMap.set(tokenId, EMPTY_ADDRESS);
+
+        // TODO: Emit event
+        return true;
+    }
+
+    public safeTransferFrom(calldata: Calldata): BytesWriter {
         const response = new BytesWriter();
+        const from = calldata.readAddress();
+        const to = calldata.readAddress();
+        const tokenId = calldata.readU256();
+        const resp = this._safeTransferFrom(from, to, tokenId);
+
+        response.writeBoolean(resp);
         return response;
     }
 
-    public _burn(calldata: Calldata): BytesWriter {
-        const response = new BytesWriter();
-        return response;
+    protected _safeTransferFrom(from: Address, to: Address, tokenId: u256): boolean {
+        // TODO: Need to know if there's a way to check if an address is a contract address
+        // If it is, then we need to check if it implements the IOP_721Receiver interface
+        return this._transferFrom(from, to, tokenId);
     }
 
     // TODO: Allow for settin the base uri of nft.
