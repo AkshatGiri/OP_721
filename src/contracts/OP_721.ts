@@ -29,18 +29,29 @@ const symbolPointer: u16 = Blockchain.nextPointer;
 const baseURIPointer: u16 = Blockchain.nextPointer;
 const ownersMapPointer: u16 = Blockchain.nextPointer;
 const balancesMapPointer: u16 = Blockchain.nextPointer;
+const tokenApprovalsMapPointer: u16 = Blockchain.nextPointer;
+const operatorApprovalsMapPointer: u16 = Blockchain.nextPointer;
 
 const EMPTY_ADDRESS = '';
 
+type U256Boolean = u256;
+
 @final
 export class OP_721 extends OP_NET implements IOP_165, IOP_721, IOP_721_Metadata {
-    protected readonly ownersMap: IntToStringMemoryMap<u256, Address>;
-    protected readonly balancesMap: AddressMemoryMap<Address, u256>;
+    protected readonly ownersMap: IntToStringMemoryMap<u256, MemorySlotData<Address>>;
+    protected readonly balancesMap: AddressMemoryMap<Address, MemorySlotData<u256>>;
+    protected readonly tokenApprovalsMap: IntToStringMemoryMap<u256, MemorySlotData<Address>>;
+    protected readonly operatorApprovalsMap: MultiAddressMemoryMap<
+        Address,
+        Address,
+        MemorySlotData<U256Boolean>
+    >;
 
     // TODO: token approvals and operator approvals.
 
     protected readonly _name: StoredString;
     protected readonly _symbol: StoredString;
+    public _baseURI: StoredString;
 
     public constructor(params: OP721InitParams | null = null) {
         super();
@@ -50,14 +61,20 @@ export class OP_721 extends OP_NET implements IOP_165, IOP_721, IOP_721_Metadata
         this._baseURI = new StoredString(baseURIPointer, '');
         this.ownersMap = new IntToStringMemoryMap<u256, Address>(ownersMapPointer, EMPTY_ADDRESS);
         this.balancesMap = new AddressMemoryMap<Address, u256>(balancesMapPointer, u256.Zero);
+        this.tokenApprovalsMap = new IntToStringMemoryMap<u256, Address>(
+            tokenApprovalsMapPointer,
+            EMPTY_ADDRESS,
+        );
+        this.operatorApprovalsMap = new MultiAddressMemoryMap<Address, Address, U256Boolean>(
+            operatorApprovalsMapPointer,
+            u256.Zero,
+        );
 
         if (params && !this._name.value) {
             // TODO: confirm that in assembly script empty string is falsy.
             this.instantiate(params);
         }
     }
-
-    public _baseURI: StoredString;
 
     public instantiate(params: OP721InitParams): void {
         if (!this._name.value) {
@@ -87,9 +104,9 @@ export class OP_721 extends OP_NET implements IOP_165, IOP_721, IOP_721_Metadata
     public balanceOf(calldata: Calldata): BytesWriter {
         const response = new BytesWriter();
         const address: Address = calldata.readAddress();
-        const resp = this._balanceOf(address);
+        const balance = this._balanceOf(address);
 
-        response.writeU256(resp);
+        response.writeU256(balance);
 
         return response;
     }
@@ -105,24 +122,38 @@ export class OP_721 extends OP_NET implements IOP_165, IOP_721, IOP_721_Metadata
     public ownerOf(calldata: Calldata): BytesWriter {
         const response = new BytesWriter();
         const tokenId = calldata.readU256();
-        const resp = this._ownerOf(tokenId);
-        response.writeAddress(resp);
+        const owner = this._ownerOf(tokenId);
+        response.writeAddress(owner);
         return response;
     }
 
     protected _ownerOf(tokenId: u256): Address {
-        const owner = this.ownersMap.get(tokenId);
-        if (owner == EMPTY_ADDRESS) {
-            throw new Revert('Token does not exist.');
-        }
+        return this.ownersMap.get(tokenId);
+    }
 
+    /**
+     * @dev Reverts if the `tokenId` doesn't have a current owner (it hasn't been minted, or it has been burned).
+     * Returns the owner.
+     *
+     * Overrides to ownership logic should be done to {_ownerOf}.
+     */
+    protected _requireOwned(tokenId: u256): Address {
+        const owner = this._ownerOf(tokenId);
+        if (owner == EMPTY_ADDRESS) {
+            throw new Revert(`Token ${tokenId} does not exist.`);
+        }
         return owner;
     }
 
     public safeTransferFrom(calldata: Calldata): BytesWriter {
-        // STUB
         const response = new BytesWriter();
         return response;
+    }
+
+    protected _safeTransferFrom(from: Address, to: Address, tokenId: u256): boolean {
+        // TODO: Need to know if there's a way to check if an address is a contract address
+        // If it is, then we need to check if it implements the IOP_721Receiver interface
+        return false;
     }
 
     public transferFrom(calldata: Calldata): BytesWriter {
@@ -134,37 +165,115 @@ export class OP_721 extends OP_NET implements IOP_165, IOP_721, IOP_721_Metadata
         );
 
         response.writeBoolean(resp);
-
         return response;
     }
 
     protected _transferFrom(from: Address, to: Address, tokenId: u256): boolean {
+        if (Blockchain.sender !== from) {
+            throw new Revert('Not caller.');
+        }
+
         return true;
     }
 
+    protected _update(owner: Address, tokenId: u256): Address {
+        const currentOwner = this._ownerOf(tokenId);
+
+        return '';
+    }
+
     public approve(calldata: Calldata): BytesWriter {
-        // STUB
         const response = new BytesWriter();
+        const to = calldata.readAddress();
+        const tokenId = calldata.readU256();
+        const resp = this._approve(to, tokenId);
+        response.writeBoolean(resp);
         return response;
     }
 
-    public setApprovalForAll(calldata: Calldata): BytesWriter {
-        // STUB
-        const response = new BytesWriter();
-        return response;
+    protected _approve(to: Address, tokenId: u256): boolean {
+        const owner = this._requireOwned(tokenId);
+        if (Blockchain.sender != owner && !this._isApprovedForAll(owner, Blockchain.sender)) {
+            throw new Revert(`Not authroized to approve ${tokenId}`);
+        }
+
+        this.tokenApprovalsMap.set(tokenId, to);
+
+        // TODO: Emit event
+        return true;
     }
 
     public getApproved(calldata: Calldata): BytesWriter {
-        // STUB
+        const response = new BytesWriter();
+        const tokenId = calldata.readU256();
+        const resp = this._getApproved(tokenId);
+        response.writeAddress(resp);
+
+        return response;
+    }
+
+    protected _getApproved(tokenId: u256): Address {
+        this._requireOwned(tokenId);
+
+        return this.tokenApprovalsMap.get(tokenId);
+    }
+
+    public setApprovalForAll(calldata: Calldata): BytesWriter {
+        const response = new BytesWriter();
+        const operator = calldata.readAddress();
+        const approved = calldata.readBoolean();
+        const resp = this._setApprovalForAll(Blockchain.sender, operator, approved);
+        response.writeBoolean(resp);
+        return response;
+    }
+
+    protected _setApprovalForAll(owner: Address, operator: Address, approved: bool): boolean {
+        const operatorApprovals = this.operatorApprovalsMap.get(owner);
+        operatorApprovals.set(operator, u256.from<bool>(approved));
+
+        // TODO: Emit event
+        return true;
+    }
+
+    public isApprovedForAll(calldata: Calldata): BytesWriter {
+        const response = new BytesWriter();
+        const owner = calldata.readAddress();
+        const operator = calldata.readAddress();
+        const isApproved = this._isApprovedForAll(owner, operator);
+        response.writeBoolean(isApproved);
+        return response;
+    }
+
+    protected _isApprovedForAll(owner: Address, operator: Address): boolean {
+        const operatorApprovals = this.operatorApprovalsMap.get(owner);
+        return operatorApprovals.get(operator).as<boolean>();
+    }
+
+    protected _isAuthorized(owner: Address, spender: Address, tokenId: u256): boolean {
+        return (
+            owner == spender ||
+            this._isApprovedForAll(owner, spender) ||
+            this._getApproved(tokenId) == spender
+        );
+    }
+
+    protected _mint(calldata: Calldata): BytesWriter {
         const response = new BytesWriter();
         return response;
     }
 
-    public isApprovedForAll(calldata: Calldata): BytesWriter {
-        // STUB
+    public _safeMint(calldata: Calldata): BytesWriter {
         const response = new BytesWriter();
         return response;
     }
+
+    public _burn(calldata: Calldata): BytesWriter {
+        const response = new BytesWriter();
+        return response;
+    }
+
+    // TODO: Allow for settin the base uri of nft.
+    // Metadata methods
 
     public name(): BytesWriter {
         const response = new BytesWriter();
@@ -183,7 +292,6 @@ export class OP_721 extends OP_NET implements IOP_165, IOP_721, IOP_721_Metadata
         const response = new BytesWriter();
         return response;
     }
-    // TODO: Allow for settin the base uri of nft.
 
     public override callMethod(method: Selector, calldata: Calldata): BytesWriter {
         switch (method) {
@@ -203,5 +311,5 @@ export class OP_721 extends OP_NET implements IOP_165, IOP_721, IOP_721_Metadata
         return response;
     }
 
-    // events
+    // TODO: events
 }
