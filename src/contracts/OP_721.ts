@@ -11,13 +11,18 @@ import {
     OP_NET,
     Revert,
     Selector,
-    StoredString
+    StoredString,
 } from '@btc-vision/btc-runtime/runtime';
 import { INTERFACE_ID_OP_165, IOP_165 } from './interfaces/IOP_165';
 import { INTERFACE_ID_OP_721, IOP_721 } from './interfaces/IOP_721';
 import { INTERFACE_ID_OP_721_Metadata, IOP_721_Metadata } from './interfaces/IP_721_Metadata';
 import { OP721InitParams } from './interfaces/OP721InitParams';
 import { IntToStringMemoryMap } from './utils/IntToStringMemoryMap';
+import { TransferEvent } from './events/TransferEvent';
+import { ApprovalEvent } from './events/ApprovalEvent';
+import { ApprovalForAllEvent } from './events/ApprovalForAllEvent';
+import { BurnEvent } from './events/BurnEvent';
+import { MintEvent } from './events/MintEvent';
 
 const namePointer: u16 = Blockchain.nextPointer;
 const symbolPointer: u16 = Blockchain.nextPointer;
@@ -155,7 +160,8 @@ export class OP_721 extends OP_NET implements IOP_165, IOP_721, IOP_721_Metadata
 
         this.tokenApprovalsMap.set(tokenId, to);
 
-        // TODO: Emit event
+        this.createApprovalEvent(owner, to, tokenId);
+
         return true;
     }
 
@@ -183,11 +189,12 @@ export class OP_721 extends OP_NET implements IOP_165, IOP_721, IOP_721_Metadata
         return response;
     }
 
-    protected _setApprovalForAll(owner: Address, operator: Address, approved: bool): boolean {
+    protected _setApprovalForAll(owner: Address, operator: Address, approved: boolean): boolean {
         const operatorApprovals = this.operatorApprovalsMap.get(owner);
         operatorApprovals.set(operator, u256.from<bool>(approved));
 
-        // TODO: Emit event
+        this.createApprovalForAllEvent(owner, operator, approved);
+
         return true;
     }
 
@@ -221,7 +228,8 @@ export class OP_721 extends OP_NET implements IOP_165, IOP_721, IOP_721_Metadata
         this.ownersMap.set(tokenId, to);
         this.balancesMap.set(to, u256.add(this.balancesMap.get(to), u256.One));
 
-        // TODO: Emit event
+        this.createMintEvent(to, tokenId);
+
         return true;
     }
 
@@ -238,7 +246,8 @@ export class OP_721 extends OP_NET implements IOP_165, IOP_721, IOP_721_Metadata
         this.ownersMap.delete(tokenId);
         this.balancesMap.set(owner, u256.sub(this.balancesMap.get(owner), u256.One));
 
-        // TODO: Emit event
+        this.createBurnEvent(tokenId);
+
         return true;
     }
 
@@ -272,7 +281,8 @@ export class OP_721 extends OP_NET implements IOP_165, IOP_721, IOP_721_Metadata
         // clear approvals from the previous owner
         this.tokenApprovalsMap.set(tokenId, EMPTY_ADDRESS);
 
-        // TODO: Emit event
+        this.createTransferEvent(from, to, tokenId);
+
         return true;
     }
 
@@ -332,5 +342,39 @@ export class OP_721 extends OP_NET implements IOP_165, IOP_721, IOP_721_Metadata
         return response;
     }
 
-    // TODO: events
+    // Events
+
+    protected createTransferEvent(from: Address, to: Address, tokenId: u256): void {
+        const transferEvent = new TransferEvent(from, to, tokenId);
+
+        this.emitEvent(transferEvent);
+    }
+
+    protected createApprovalEvent(owner: Address, spender: Address, tokenId: u256): void {
+        const approvalEvent = new ApprovalEvent(owner, spender, tokenId);
+
+        this.emitEvent(approvalEvent);
+    }
+
+    protected createApprovalForAllEvent(
+        owner: Address,
+        operator: Address,
+        approved: boolean,
+    ): void {
+        const approvalForAllEvent = new ApprovalForAllEvent(owner, operator, approved);
+
+        this.emitEvent(approvalForAllEvent);
+    }
+
+    protected createMintEvent(to: Address, tokenId: u256): void {
+        const mintEvent = new MintEvent(to, tokenId);
+
+        this.emitEvent(mintEvent);
+    }
+
+    protected createBurnEvent(tokenId: u256): void {
+        const burnEvent = new BurnEvent(tokenId);
+
+        this.emitEvent(burnEvent);
+    }
 }
